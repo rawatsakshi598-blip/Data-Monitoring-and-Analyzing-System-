@@ -120,3 +120,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Ensure both scrollbars are always visible in table detail containers
+   so the user doesn't need to scroll down to find the horizontal scrollbar */
+.table-scroll-both {
+  overflow: auto;
+  scrollbar-gutter: stable both;
+}
+
+/* Sticky header rows in the data table need solid backgrounds so content
+   doesn't bleed through when scrolling */
+.table-scroll-both thead th {
+  background-color: #f1f5f9; /* slate-100 */
+}
+
+.table-scroll-both thead th.sticky-left,
+.table-scroll-both tbody td.sticky-left {
+  background-color: inherit;
+}

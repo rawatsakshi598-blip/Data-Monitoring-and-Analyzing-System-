@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Database,
   ShieldCheck,
-  GitBranch,
   Bell,
   Settings,
   Loader2,
@@ -18,12 +17,11 @@ import {
   Plug,
   CalendarClock,
   MessageSquare,
-  FlaskConical,
-  FileCheck,
+
   TrendingUp,
   Code,
   ListChecks,
-  FolderCheck,
+  CheckCircle2,
 } from 'lucide-react'
 import { useAppStore, type ViewType } from '@/lib/store'
 import { Sidebar } from '@/components/dq/sidebar'
@@ -35,8 +33,6 @@ const Services = React.lazy(() => import('@/components/dq/services'))
 const Tables = React.lazy(() => import('@/components/dq/tables'))
 const Ingest = React.lazy(() => import('@/components/dq/ingest'))
 const Quality = React.lazy(() => import('@/components/dq/quality'))
-const Lineage = React.lazy(() => import('@/components/dq/lineage'))
-const Governance = React.lazy(() => import('@/components/dq/governance'))
 const ActivityView = React.lazy(() => import('@/components/dq/activity'))
 const Alerts = React.lazy(() => import('@/components/dq/alerts'))
 const SettingsView = React.lazy(() => import('@/components/dq/settings'))
@@ -47,8 +43,6 @@ const MLReadiness = React.lazy(() => import('@/components/dq/ml-readiness'))
 const Connectors = React.lazy(() => import('@/components/dq/connectors'))
 const Scheduler = React.lazy(() => import('@/components/dq/scheduler'))
 const Copilot = React.lazy(() => import('@/components/dq/copilot'))
-const StatisticalTests = React.lazy(() => import('@/components/dq/statistical-tests'))
-const DataContracts = React.lazy(() => import('@/components/dq/data-contracts'))
 const Forecasting = React.lazy(() => import('@/components/dq/forecasting'))
 const SQLPlayground = React.lazy(() => import('@/components/dq/sql-playground'))
 const Checks = React.lazy(() => import('@/components/dq/checks'))
@@ -60,11 +54,9 @@ const viewConfig: Record<ViewType, { label: string; icon: React.ReactNode }> = {
   tables: { label: 'Explore Tables', icon: <Database className="h-4 w-4" /> },
   ingest: { label: 'Ingest Data', icon: <Upload className="h-4 w-4" /> },
   quality: { label: 'Data Quality', icon: <ShieldCheck className="h-4 w-4" /> },
-  lineage: { label: 'Data Lineage', icon: <GitBranch className="h-4 w-4" /> },
-  governance: { label: 'Governance', icon: <ShieldCheck className="h-4 w-4" /> },
   activity: { label: 'Activity Feed', icon: <Settings className="h-4 w-4" /> },
   alerts: { label: 'Alerts', icon: <Bell className="h-4 w-4" /> },
-  settings: { label: 'Settings', icon: <Settings className="h-4 w-4" /> },
+  settings: { label: 'Local Setup', icon: <Wrench className="h-4 w-4" /> },
   checks: { label: 'Quality Checks', icon: <ListChecks className="h-4 w-4" /> },
   pipeline: { label: 'Pipeline Builder', icon: <Workflow className="h-4 w-4" /> },
   'auto-eda': { label: 'Auto-EDA Report', icon: <BarChart3 className="h-4 w-4" /> },
@@ -72,12 +64,10 @@ const viewConfig: Record<ViewType, { label: string; icon: React.ReactNode }> = {
   connectors: { label: 'Data Connectors', icon: <Plug className="h-4 w-4" /> },
   scheduler: { label: 'Job Scheduler', icon: <CalendarClock className="h-4 w-4" /> },
   copilot: { label: 'AI Data Copilot', icon: <MessageSquare className="h-4 w-4" /> },
-  statistical: { label: 'Statistical Tests', icon: <FlaskConical className="h-4 w-4" /> },
-  contracts: { label: 'Data Contracts', icon: <FileCheck className="h-4 w-4" /> },
   forecasting: { label: 'Quality Forecasting', icon: <TrendingUp className="h-4 w-4" /> },
   'sql-playground': { label: 'SQL Playground', icon: <Code className="h-4 w-4" /> },
   'auto-fix': { label: 'Auto-Fix Approval', icon: <Wrench className="h-4 w-4" /> },
-  'fixed-datasets': { label: 'Fixed Datasets', icon: <FolderCheck className="h-4 w-4" /> },
+  'fixed-datasets': { label: 'Fixed Datasets', icon: <CheckCircle2 className="h-4 w-4" /> },
 }
 
 function ViewRenderer({ view }: { view: ViewType }) {
@@ -94,10 +84,6 @@ function ViewRenderer({ view }: { view: ViewType }) {
       return <Quality />
     case 'checks':
       return <Checks />
-    case 'lineage':
-      return <Lineage />
-    case 'governance':
-      return <Governance />
     case 'activity':
       return <ActivityView />
     case 'alerts':
@@ -116,10 +102,6 @@ function ViewRenderer({ view }: { view: ViewType }) {
       return <Scheduler />
     case 'copilot':
       return <Copilot />
-    case 'statistical':
-      return <StatisticalTests />
-    case 'contracts':
-      return <DataContracts />
     case 'forecasting':
       return <Forecasting />
     case 'sql-playground':

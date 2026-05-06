@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Wrench, CheckCircle2, XCircle, Clock, AlertTriangle, Filter,
-  ThumbsUp, ThumbsDown, Loader2, RefreshCw, Zap, Eye,
+  ThumbsUp, ThumbsDown, Loader2, RefreshCw, Zap, Eye, Sparkles,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,14 @@ interface FixProposal {
   resolvedAt?: string
   resolvedBy?: string
   rejectionReason?: string
+  tableId?: string
+  checkId?: string
+}
+
+interface DatasetOption {
+  id: string
+  name: string
+  tableId?: string
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -77,6 +85,11 @@ export default function AutoFix() {
   const [rejectFixId, setRejectFixId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
+  // Dataset selector for proposing fixes
+  const [datasets, setDatasets] = useState<DatasetOption[]>([])
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
+  const [proposing, setProposing] = useState(false)
+
   const fetchFixes = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -84,18 +97,41 @@ export default function AutoFix() {
       const res = await fetch('/api/auto-fix/pending')
       if (res.ok) {
         const data = await res.json()
-        setFixes(Array.isArray(data) ? data : data?.fixes || [])
+        // Backend returns { fixes: [...] }
+        const fixesList = Array.isArray(data) ? data : (data?.fixes || [])
+        setFixes(fixesList)
       } else {
-        throw new Error('Failed to fetch')
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed to fetch')
       }
-    } catch {
-      setError('Failed to load fix proposals from server')
+    } catch (err: any) {
+      setError(err.message || 'Failed to load fix proposals from server')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchFixes() }, [fetchFixes])
+  const fetchDatasets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/datasets')
+      if (res.ok) {
+        const data = await res.json()
+        const list = Array.isArray(data) ? data : []
+        setDatasets(list.map((ds: any) => ({
+          id: ds.id,
+          name: ds.name,
+          tableId: ds.tableId || ds.id,
+        })))
+      }
+    } catch {
+      // Non-critical
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchFixes()
+    fetchDatasets()
+  }, [fetchFixes, fetchDatasets])
 
   const filteredFixes = statusFilter === 'all' ? fixes : fixes.filter((f) => f.status === statusFilter)
   const proposedCount = fixes.filter((f) => f.status === 'proposed').length
@@ -103,22 +139,56 @@ export default function AutoFix() {
   const appliedCount = fixes.filter((f) => f.status === 'applied').length
   const rejectedCount = fixes.filter((f) => f.status === 'rejected').length
 
+  // ── Propose fixes for a dataset ──
+  const handleProposeFixes = async () => {
+    if (!selectedDatasetId) {
+      toast.error('Please select a dataset first')
+      return
+    }
+    // Find the tableId for the selected dataset
+    const ds = datasets.find(d => d.id === selectedDatasetId)
+    const tableId = ds?.tableId || selectedDatasetId
+
+    setProposing(true)
+    try {
+      const res = await fetch('/api/auto-fix/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to propose fixes')
+      }
+      const proposals = data.proposals || []
+      if (proposals.length === 0) {
+        toast.info(data.message || 'No failed checks found to fix for this dataset')
+      } else {
+        toast.success(`Proposed ${proposals.length} fix${proposals.length > 1 ? 'es' : ''}`)
+      }
+      // Refresh the fixes list
+      await fetchFixes()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to propose fixes')
+    } finally {
+      setProposing(false)
+    }
+  }
+
   const handleApprove = async (fixId: string) => {
     setActionLoading(fixId)
     try {
       const res = await fetch(`/api/auto-fix/${fixId}/approve`, { method: 'POST' })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed')
+      }
       toast.success('Fix approved')
-    } catch {
-      toast.success('Fix approved (offline)')
+      await fetchFixes()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to approve fix')
     } finally {
       setActionLoading(null)
-    }
-    setFixes((prev) => prev.map((f) =>
-      f.id === fixId ? { ...f, status: 'approved' as const, resolvedAt: new Date().toISOString(), resolvedBy: 'admin' } : f
-    ))
-    if (selectedFix?.id === fixId) {
-      setSelectedFix({ ...selectedFix, status: 'approved', resolvedAt: new Date().toISOString(), resolvedBy: 'admin' })
     }
   }
 
@@ -130,40 +200,43 @@ export default function AutoFix() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: rejectionReason }),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed')
+      }
       toast.success('Fix rejected')
-    } catch {
-      toast.success('Fix rejected (offline)')
+      setShowRejectDialog(false)
+      setRejectionReason('')
+      setRejectFixId(null)
+      await fetchFixes()
+      setSelectedFix(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reject fix')
     } finally {
       setActionLoading(null)
     }
-    setFixes((prev) => prev.map((f) =>
-      f.id === fixId ? { ...f, status: 'rejected' as const, resolvedAt: new Date().toISOString(), resolvedBy: 'admin', rejectionReason } : f
-    ))
-    if (selectedFix?.id === fixId) {
-      setSelectedFix({ ...selectedFix, status: 'rejected', resolvedAt: new Date().toISOString(), resolvedBy: 'admin', rejectionReason })
-    }
-    setShowRejectDialog(false)
-    setRejectionReason('')
-    setRejectFixId(null)
   }
 
   const handleApply = async (fixId: string) => {
     setActionLoading(fixId)
     try {
       const res = await fetch(`/api/auto-fix/${fixId}/apply`, { method: 'POST' })
-      if (!res.ok) throw new Error('Failed')
-      toast.success('Fix applied successfully')
-    } catch {
-      toast.success('Fix applied (offline)')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed')
+      }
+      const result = await res.json()
+      if (result.success) {
+        toast.success('Fix applied successfully')
+      } else {
+        toast.error(result.message || 'Fix failed to apply')
+      }
+      await fetchFixes()
+      setSelectedFix(null)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to apply fix')
     } finally {
       setActionLoading(null)
-    }
-    setFixes((prev) => prev.map((f) =>
-      f.id === fixId ? { ...f, status: 'applied' as const, resolvedAt: new Date().toISOString(), resolvedBy: 'system' } : f
-    ))
-    if (selectedFix?.id === fixId) {
-      setSelectedFix({ ...selectedFix, status: 'applied', resolvedAt: new Date().toISOString(), resolvedBy: 'system' })
     }
   }
 
@@ -196,11 +269,57 @@ export default function AutoFix() {
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="applied">Applied</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
+              <SelectItem value="failed">Failed</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" className="gap-2" onClick={fetchFixes}><RefreshCw className="h-4 w-4" /> Refresh</Button>
         </div>
       </div>
+
+      {/* Propose Fixes Panel */}
+      <Card className="border-dashed border-2 border-primary/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-amber-500" />
+            Propose Auto-Fixes
+          </CardTitle>
+          <CardDescription>
+            Select a dataset to scan for failed quality checks and generate AI fix proposals
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-3">
+            <div className="flex-1 space-y-2">
+              <label className="text-sm font-medium text-slate-700">Dataset</label>
+              <Select value={selectedDatasetId} onValueChange={setSelectedDatasetId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a dataset..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasets.map((ds) => (
+                    <SelectItem key={ds.id} value={ds.id}>{ds.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={handleProposeFixes}
+              disabled={!selectedDatasetId || proposing}
+              className="min-w-[180px] gap-2"
+            >
+              {proposing
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Generating...</>
+                : <><Zap className="h-4 w-4" />Propose Fixes</>
+              }
+            </Button>
+          </div>
+          {datasets.length === 0 && (
+            <p className="text-xs text-muted-foreground mt-2">
+              No datasets found. Upload data or create a dataset first.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {error && (
         <Card className="border-red-200 bg-red-50/50">
@@ -257,7 +376,11 @@ export default function AutoFix() {
                     <Card>
                       <CardContent className="p-8 text-center">
                         <Wrench className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                        <p className="text-sm text-slate-400">No fixes with this status</p>
+                        <p className="text-sm text-slate-400">
+                          {statusFilter === 'all'
+                            ? 'No fix proposals yet. Use "Propose Fixes" above to generate them from failed checks.'
+                            : 'No fixes with this status'}
+                        </p>
                       </CardContent>
                     </Card>
                   ) : filteredFixes.map((fix) => (
@@ -273,7 +396,9 @@ export default function AutoFix() {
                               <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                               <span className="text-sm font-medium text-slate-900 truncate">{fix.issueType.replace(/_/g, ' ')}</span>
                             </div>
-                            <p className="text-xs text-slate-500 truncate">{fix.tableName}.{fix.columnName}</p>
+                            <p className="text-xs text-slate-500 truncate">
+                              {fix.tableName || 'Unknown Table'}{fix.columnName ? `.${fix.columnName}` : ''}
+                            </p>
                           </div>
                           <StatusBadge status={fix.status} />
                         </div>
@@ -300,7 +425,9 @@ export default function AutoFix() {
                           <Wrench className="h-4 w-4" />
                           {selectedFix.issueType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                         </CardTitle>
-                        <CardDescription>{selectedFix.tableName}.{selectedFix.columnName}</CardDescription>
+                        <CardDescription>
+                          {selectedFix.tableName || 'Unknown Table'}{selectedFix.columnName ? `.${selectedFix.columnName}` : ''}
+                        </CardDescription>
                       </div>
                       <StatusBadge status={selectedFix.status} />
                     </div>
@@ -315,7 +442,7 @@ export default function AutoFix() {
                       <h4 className="text-sm font-semibold text-slate-700 mb-1">Proposed Fix</h4>
                       <p className="text-sm text-slate-600 mb-2">{selectedFix.fixDescription}</p>
                       {selectedFix.fixDetails && (
-                        <div className="rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700 whitespace-pre-wrap">
+                        <div className="rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700 whitespace-pre-wrap max-h-48 overflow-auto">
                           {selectedFix.fixDetails}
                         </div>
                       )}
@@ -332,7 +459,11 @@ export default function AutoFix() {
                       </div>
                       <div className="rounded-lg bg-slate-50 p-3 text-center">
                         <p className="text-xs text-slate-400">Impact %</p>
-                        <p className="text-lg font-bold">{((selectedFix.affectedRows / selectedFix.totalRows) * 100).toFixed(1)}%</p>
+                        <p className="text-lg font-bold">
+                          {selectedFix.totalRows > 0
+                            ? ((selectedFix.affectedRows / selectedFix.totalRows) * 100).toFixed(1)
+                            : '—'}%
+                        </p>
                       </div>
                     </div>
                     {selectedFix.rejectionReason && (
@@ -342,7 +473,7 @@ export default function AutoFix() {
                       </div>
                     )}
                     <div className="text-xs text-slate-400">
-                      Proposed: {new Date(selectedFix.proposedAt).toLocaleString()}
+                      Proposed: {selectedFix.proposedAt ? new Date(selectedFix.proposedAt).toLocaleString() : '—'}
                       {selectedFix.resolvedAt && ` · Resolved: ${new Date(selectedFix.resolvedAt).toLocaleString()}`}
                       {selectedFix.resolvedBy && ` by ${selectedFix.resolvedBy}`}
                     </div>
@@ -368,7 +499,11 @@ export default function AutoFix() {
                   <CardContent className="p-12 text-center">
                     <Eye className="h-12 w-12 text-slate-300 mx-auto mb-4" />
                     <h3 className="font-semibold text-slate-700 mb-1">Select a Fix to Review</h3>
-                    <p className="text-sm text-slate-400">Click a proposed fix to see details and take action</p>
+                    <p className="text-sm text-slate-400">
+                      {fixes.length > 0
+                        ? 'Click a proposed fix to see details and take action'
+                        : 'Use "Propose Fixes" above to generate fix proposals from failed quality checks'}
+                    </p>
                   </CardContent>
                 </Card>
               )}
@@ -380,19 +515,21 @@ export default function AutoFix() {
           <Card>
             <CardHeader className="pb-3"><CardTitle className="text-sm">Applied & Rejected Fixes</CardTitle></CardHeader>
             <CardContent>
-              {fixes.filter((f) => f.status === 'applied' || f.status === 'rejected').length === 0 ? (
+              {fixes.filter((f) => f.status === 'applied' || f.status === 'rejected' || f.status === 'failed').length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
                   <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No resolved fixes yet</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {fixes.filter((f) => f.status === 'applied' || f.status === 'rejected').map((fix) => (
+                  {fixes.filter((f) => f.status === 'applied' || f.status === 'rejected' || f.status === 'failed').map((fix) => (
                     <div key={fix.id} className="flex items-center justify-between rounded-lg border p-3">
                       <div className="flex items-center gap-3">
                         <StatusBadge status={fix.status} />
                         <div>
-                          <p className="text-sm font-medium text-slate-900">{fix.issueType.replace(/_/g, ' ')} - {fix.tableName}.{fix.columnName}</p>
+                          <p className="text-sm font-medium text-slate-900">
+                            {fix.issueType.replace(/_/g, ' ')} — {fix.tableName || 'Table'}{fix.columnName ? `.${fix.columnName}` : ''}
+                          </p>
                           <p className="text-xs text-slate-400">{fix.fixDescription}</p>
                         </div>
                       </div>

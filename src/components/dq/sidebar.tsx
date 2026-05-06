@@ -9,9 +9,6 @@ import {
   ShieldCheck,
   TestTubes,
   ListChecks,
-  GitBranch,
-  Scale,
-  Tag,
   Settings,
   Activity,
   Bell,
@@ -25,14 +22,13 @@ import {
   BarChart3,
   Wrench,
   Brain,
-  FolderCheck,
   Plug,
   CalendarClock,
   MessageSquare,
-  FlaskConical,
-  FileCheck,
+
   TrendingUp,
   Code,
+  CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore, type ViewType } from '@/lib/store'
@@ -76,6 +72,7 @@ const categories: NavCategory[] = [
       { label: 'Quality Tests', view: 'quality', icon: <TestTubes className="h-4 w-4" /> },
       { label: 'Checks', view: 'checks', icon: <ListChecks className="h-4 w-4" /> },
       { label: 'Auto-Fix', view: 'auto-fix', icon: <Wrench className="h-4 w-4" /> },
+      { label: 'Fixed Datasets', view: 'fixed-datasets', icon: <CheckCircle2 className="h-4 w-4" /> },
     ],
   },
   {
@@ -87,7 +84,6 @@ const categories: NavCategory[] = [
       { label: 'Auto-EDA', view: 'auto-eda', icon: <BarChart3 className="h-4 w-4" /> },
       { label: 'ML Readiness', view: 'ml-readiness', icon: <Brain className="h-4 w-4" /> },
       { label: 'Data Copilot', view: 'copilot', icon: <MessageSquare className="h-4 w-4" /> },
-      { label: 'Fixed Datasets', view: 'fixed-datasets', icon: <FolderCheck className="h-4 w-4" /> },
     ],
   },
   {
@@ -104,19 +100,8 @@ const categories: NavCategory[] = [
     label: 'Analytics',
     icon: <BarChart3 className="h-3.5 w-3.5" />,
     items: [
-      { label: 'Statistical Tests', view: 'statistical', icon: <FlaskConical className="h-4 w-4" /> },
       { label: 'Forecasting', view: 'forecasting', icon: <TrendingUp className="h-4 w-4" /> },
       { label: 'SQL Playground', view: 'sql-playground', icon: <Code className="h-4 w-4" /> },
-    ],
-  },
-  {
-    id: 'governance',
-    label: 'Governance',
-    icon: <Scale className="h-3.5 w-3.5" />,
-    items: [
-      { label: 'Data Contracts', view: 'contracts', icon: <FileCheck className="h-4 w-4" /> },
-      { label: 'Tags & Glossary', view: 'governance', icon: <Tag className="h-4 w-4" /> },
-      { label: 'Lineage', view: 'lineage', icon: <GitBranch className="h-4 w-4" /> },
     ],
   },
   {
@@ -127,7 +112,7 @@ const categories: NavCategory[] = [
       { label: 'Scheduler', view: 'scheduler', icon: <CalendarClock className="h-4 w-4" /> },
       { label: 'Activity', view: 'activity', icon: <Activity className="h-4 w-4" /> },
       { label: 'Alerts', view: 'alerts', icon: <Bell className="h-4 w-4" />, badge: 0 },
-      { label: 'Settings', view: 'settings', icon: <Users className="h-4 w-4" /> },
+      { label: 'Local Setup', view: 'settings', icon: <Wrench className="h-4 w-4" /> },
     ],
   },
 ]

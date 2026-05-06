@@ -47,11 +47,10 @@ local-*
 dev.log
 dev.out.log
 test
-prompt
+
 
 server.log
-# Skills directory
-/skills/
+
 
 # Python
 __pycache__/
@@ -65,9 +64,7 @@ venv/
 .venv/
 env/
 
-# Database
-*.db
-*.sqlite3
+
 
 # Data snapshots
 data/history/

@@ -35,8 +35,10 @@ _ALIASES = {
     "remove_outliers": "outlier",
     "cap_outliers": "outlier",
     "winsorize": "outlier",
+    "outlier_removal": "outlier",
     "remove_duplicates": "dedup",
     "deduplicate": "dedup",
+    "deduplication": "dedup",
     "one_hot": "encoding",
     "label_encode": "encoding",
     "ordinal_encode": "encoding",
@@ -46,9 +48,11 @@ _ALIASES = {
     "minmax": "normalization",
     "normalize": "normalization",
     "zscore": "normalization",
+    "scaling": "normalization",
     "clean_string": "string_clean",
     "trim": "string_clean",
     "strip": "string_clean",
+    "text_clean": "string_clean",
     "parse_date": "date_parse",
     "extract_date": "date_parse",
     "split_data": "data_split",
@@ -72,7 +76,9 @@ def list_transformers() -> list[dict]:
             "type": k,
             "name": v.__name__,
             "description": v.__doc__ or "",
-            "supported_methods": v.supported_methods if hasattr(v, 'supported_methods') else [],
+            "supported_methods": (
+                v.supported_methods if hasattr(v, "supported_methods") else []
+            ),
         }
         for k, v in TRANSFORMERS.items()
     ]

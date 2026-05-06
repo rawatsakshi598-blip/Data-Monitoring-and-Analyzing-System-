@@ -13,10 +13,14 @@ import {
   AlertTriangle,
   AlertOctagon,
   Filter,
+  Play,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -34,6 +38,7 @@ import {
 } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { QualityCheck, Dataset } from '@/lib/store'
+import { toast } from 'sonner'
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },
@@ -96,6 +101,7 @@ export default function ChecksView() {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [runningAll, setRunningAll] = useState(false)
 
   // Filters
   const [datasetFilter, setDatasetFilter] = useState('all')
@@ -105,13 +111,20 @@ export default function ChecksView() {
   const fetchChecks = useCallback(async () => {
     try {
       setLoading(true)
+      setError(null)
       const params = new URLSearchParams({ limit })
       if (datasetFilter !== 'all') params.set('datasetId', datasetFilter)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       const res = await fetch(`/api/checks?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch checks')
       const data = await res.json()
-      setChecks(Array.isArray(data) ? data : [])
+      // Backend returns { rule: { name }, dataset: { name } } — map to flat fields
+      const mapped = (Array.isArray(data) ? data : []).map((c: any) => ({
+        ...c,
+        ruleName: c.ruleName || c.rule?.name || '',
+        datasetName: c.datasetName || c.dataset?.name || '',
+      }))
+      setChecks(mapped)
     } catch (err) {
       console.error('Failed to fetch checks:', err)
       setError('Failed to load checks')
@@ -132,6 +145,48 @@ export default function ChecksView() {
     }
   }, [])
 
+  const handleRunAllChecks = useCallback(async () => {
+    setRunningAll(true)
+    try {
+      // Fetch all rules first
+      const rulesRes = await fetch('/api/rules')
+      if (!rulesRes.ok) throw new Error('Failed to fetch rules')
+      const rules = await rulesRes.json()
+      const ruleList = Array.isArray(rules) ? rules : []
+
+      if (ruleList.length === 0) {
+        toast.error('No quality rules found. Create rules first, then run checks.')
+        return
+      }
+
+      // Run each rule
+      let passed = 0
+      let failed = 0
+      for (const rule of ruleList) {
+        try {
+          const res = await fetch('/api/run-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ruleId: rule.id }),
+          })
+          if (res.ok) passed++
+          else failed++
+        } catch {
+          failed++
+        }
+      }
+
+      toast.success(`Ran ${ruleList.length} checks: ${passed} passed, ${failed} failed`)
+
+      // Refresh the checks list
+      await fetchChecks()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to run checks')
+    } finally {
+      setRunningAll(false)
+    }
+  }, [fetchChecks])
+
   useEffect(() => {
     fetchDatasets()
   }, [fetchDatasets])
@@ -145,7 +200,7 @@ export default function ChecksView() {
   const passedChecks = checks.filter((c) => c.status === 'passed').length
   const passRate = totalChecks > 0 ? Math.round((passedChecks / totalChecks) * 1000) / 10 : 0
   const avgScore = totalChecks > 0
-    ? Math.round((checks.reduce((sum, c) => sum + c.score, 0) / totalChecks) * 10) / 10
+    ? Math.round((checks.reduce((sum, c) => sum + (c.score ?? 0), 0) / totalChecks) * 10) / 10
     : 0
   const avgDuration = totalChecks > 0
     ? Math.round(checks.reduce((sum, c) => sum + c.duration, 0) / totalChecks)
@@ -153,7 +208,14 @@ export default function ChecksView() {
 
   const getDatasetName = (id: string) => {
     const ds = datasets.find((d) => d.id === id)
-    return ds?.name || id.slice(0, 8)
+    if (ds) return ds.name
+    // Also try matching by tableId field (some datasetIds are Table UUIDs)
+    const byTableId = datasets.find((d) => (d as any).tableId === id)
+    if (byTableId) return byTableId.name
+    // Try matching by name
+    const byName = datasets.find((d) => d.name === id)
+    if (byName) return byName.name
+    return id.length > 16 ? id.slice(0, 8) + '…' : id
   }
 
   if (loading && checks.length === 0) {
@@ -179,11 +241,38 @@ export default function ChecksView() {
       animate="visible"
     >
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Quality Checks</h1>
-        <p className="text-sm text-muted-foreground">
-          View historical quality check results and trends
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Quality Checks</h1>
+          <p className="text-sm text-muted-foreground">
+            View historical quality check results and trends
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={fetchChecks}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={handleRunAllChecks}
+            disabled={runningAll}
+          >
+            {runningAll ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {runningAll ? 'Running...' : 'Run All Checks'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -367,8 +456,8 @@ export default function ChecksView() {
                           </TableCell>
                           <TableCell>{getStatusBadge(check.status)}</TableCell>
                           <TableCell>
-                            <span className={`font-semibold ${getScoreColor(check.score)}`}>
-                              {safeFixed(check.score)}
+                            <span className={`font-semibold ${getScoreColor(check.score ?? 0)}`}>
+                              {safeFixed(check.score ?? 0)}
                             </span>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">

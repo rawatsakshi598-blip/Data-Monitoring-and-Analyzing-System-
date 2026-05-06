@@ -9,7 +9,16 @@ export async function POST(
   const path = request.nextUrl.pathname.replace(/^\/api/, '')
   const url = `${BACKEND}${path}`
   try {
-    const body = await request.json()
+    // Handle empty body — frontend may call approve with no JSON body
+    let body = {}
+    try {
+      const text = await request.text()
+      if (text.trim()) {
+        body = JSON.parse(text)
+      }
+    } catch {
+      body = {}
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

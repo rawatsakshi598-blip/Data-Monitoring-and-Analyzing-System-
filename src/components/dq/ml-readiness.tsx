@@ -143,17 +143,20 @@ export default function MLReadiness() {
     setLoading(true)
     setError(null)
     try {
+      // GET endpoint auto-computes if no cached result exists
       const res = await fetch(`/api/ml-readiness/${encodeURIComponent(selectedTable)}`)
       if (res.ok) {
         const data = await res.json()
         setReport(data)
         toast.success('ML readiness analysis complete')
       } else {
-        throw new Error('Failed')
+        const errData = await res.json().catch(() => ({}))
+        setError(errData.error || 'Failed to generate ML readiness report')
+        toast.error(errData.error || 'Analysis failed')
       }
-    } catch {
+    } catch (err: any) {
       setError('Failed to generate ML readiness report')
-      toast.error('Analysis failed')
+      toast.error('Analysis failed — is the backend running?')
     } finally {
       setLoading(false)
     }

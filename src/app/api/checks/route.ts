@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const path = request.nextUrl.pathname.replace(/^\/api/, '')
   const url = `${BACKEND}${path}${qs ? '?' + qs : ''}`
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { cache: 'no-store' })
     const data = await res.json()
     return NextResponse.json(data, { status: res.status })
   } catch {

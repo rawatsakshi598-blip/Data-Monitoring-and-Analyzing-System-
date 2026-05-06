@@ -108,6 +108,17 @@ function CheckResultCard({ result }: { result: Record<string, unknown> }) {
 }
 
 // ── NL Rule Creator ──
+/** Resolve a datasetId to the canonical Dataset UUID for API calls. */
+function resolveDatasetUuid(datasets: Dataset[], id: string): string {
+  const byId = datasets.find((d) => d.id === id)
+  if (byId) return id
+  const byTableId = datasets.find((d) => d.tableId === id)
+  if (byTableId) return byTableId.id
+  const byName = datasets.find((d) => d.name === id)
+  if (byName) return byName.id
+  return id
+}
+
 function NLRuleCreator({ datasets, onCreated }: { datasets: Dataset[]; onCreated: () => void }) {
   const [prompt,    setPrompt]    = useState('')
   const [datasetId, setDatasetId] = useState('')
@@ -119,20 +130,26 @@ function NLRuleCreator({ datasets, onCreated }: { datasets: Dataset[]; onCreated
     setLoading(true)
     setResult(null)
     try {
+      // Resolve the datasetId to the canonical Dataset UUID for the backend
+      // The backend nl-rule endpoint needs a Dataset UUID, not a Table UUID
+      const resolvedId = resolveDatasetUuid(datasets, datasetId)
       const res = await fetch('/api/nl-rule', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ prompt: prompt.trim(), datasetId }),
+        body:    JSON.stringify({ prompt: prompt.trim(), datasetId: resolvedId }),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Failed')
+      }
       const data = await res.json()
       setResult(data)
       onCreated()
       toast.success('Rule generated!', {
         description: `${String(data.generationMethod ?? '').toUpperCase()} — ${String(data.name ?? '')}`,
       })
-    } catch {
-      toast.error('Generation failed')
+    } catch (err: any) {
+      toast.error(err.message || 'Generation failed')
     } finally {
       setLoading(false)
     }
@@ -270,7 +287,18 @@ function RunCheckPanel({
     }
   }
 
-  const filteredRules = rules.filter((r) => !datasetId || r.datasetId === datasetId)
+  // Filter rules by matching datasetId across ALL possible ID formats
+  const filteredRules = rules.filter((r) => {
+    if (!datasetId) return true
+    if (r.datasetId === datasetId) return true
+    // Also match if the rule's datasetId corresponds to the same dataset
+    // (e.g., rule has Dataset UUID but dropdown has Table UUID, or vice versa)
+    const ds = datasets.find((d) => d.id === datasetId || d.tableId === datasetId)
+    if (ds) {
+      if (r.datasetId === ds.id || r.datasetId === ds.tableId || r.datasetId === ds.name) return true
+    }
+    return false
+  })
 
   return (
     <Card>
@@ -594,6 +622,7 @@ export default function Quality() {
 
   const passed   = checks.filter((c) => c.status === 'passed').length
   const failed   = checks.filter((c) => c.status === 'failed').length
+  const warned   = checks.filter((c) => c.status === 'warning').length
   const passRate = checks.length > 0
     ? Math.round((passed / checks.length) * 1000) / 10
     : 0
@@ -602,8 +631,45 @@ export default function Quality() {
     : 0
 
   const filteredRules  = rules.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()))
-  const getDatasetName = (id: string | null) =>
-    datasets.find((d) => d.id === id)?.name || (id || '').slice(0, 8)
+
+  /** Resolve a datasetId (which might be a Dataset UUID, Table UUID, or table name)
+   *  to a human-readable name using the datasets list. */
+  const getDatasetName = (id: string | null) => {
+    if (!id) return '—'
+    // Try exact match on id
+    const byId = datasets.find((d) => d.id === id)
+    if (byId) return byId.name
+    // Try matching via tableId
+    const byTableId = datasets.find((d) => d.tableId === id)
+    if (byTableId) return byTableId.name
+    // Try matching by name (some datasetIds are actually table names)
+    const byName = datasets.find((d) => d.name === id)
+    if (byName) return byName.name
+    return id.length > 16 ? id.slice(0, 8) + '…' : id
+  }
+
+  /** Resolve a datasetId to the canonical Dataset UUID for API calls.
+   *  If the id is a Table UUID, find the corresponding Dataset entry. */
+  const resolveDatasetId = (id: string): string => {
+    // If this id already matches a Dataset entry, use it
+    const byId = datasets.find((d) => d.id === id)
+    if (byId) return id
+    // If it's a tableId on a Dataset entry, return the Dataset's id
+    const byTableId = datasets.find((d) => d.tableId === id)
+    if (byTableId) return byTableId.id
+    // If it's a name, find the dataset by name
+    const byName = datasets.find((d) => d.name === id)
+    if (byName) return byName.id
+    return id  // fallback: use as-is
+  }
+
+  /** Get the Table UUID for a dataset (for auto-fix propose calls).
+   *  Prefers tableId if available, otherwise falls back to id. */
+  const getTableId = (datasetId: string): string => {
+    const ds = datasets.find((d) => d.id === datasetId)
+    if (ds?.tableId) return ds.tableId
+    return datasetId  // fallback: the id might itself be a Table UUID
+  }
 
   if (loading) {
     return (
@@ -623,7 +689,7 @@ export default function Quality() {
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Data Quality</h2>
           <p className="text-sm text-slate-500">
-            {rules.length} rules &middot; {checks.length} checks &middot; {passRate}% pass rate
+            {rules.length} rules &middot; {checks.length} checks &middot; {passed} passed &middot; {failed} failed &middot; {warned} warning &middot; {passRate}% pass rate
           </p>
         </div>
         <Button
@@ -636,7 +702,7 @@ export default function Quality() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-5">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="rounded-lg bg-sky-50 p-2"><TestTubes className="h-5 w-5 text-sky-600" /></div>
@@ -653,6 +719,12 @@ export default function Quality() {
           <CardContent className="p-4 flex items-center gap-3">
             <div className="rounded-lg bg-red-50 p-2"><XCircle className="h-5 w-5 text-red-600" /></div>
             <div><p className="text-2xl font-bold text-red-600">{failed}</p><p className="text-xs text-slate-500">Failed</p></div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="rounded-lg bg-amber-50 p-2"><AlertTriangle className="h-5 w-5 text-amber-600" /></div>
+            <div><p className="text-2xl font-bold text-amber-600">{warned}</p><p className="text-xs text-slate-500">Warning</p></div>
           </CardContent>
         </Card>
         <Card>

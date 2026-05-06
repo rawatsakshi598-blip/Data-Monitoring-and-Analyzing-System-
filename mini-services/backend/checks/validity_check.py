@@ -140,5 +140,13 @@ class ValidityCheck(BaseCheck):
         if max_val is not None:
             mask = mask | (numeric > max_val)
         # Values that couldn't be converted to numeric are invalid
-        mask = mask | numeric.isna()
+        # BUT: only count them if there are SOME numeric values (otherwise it's a string column)
+        numeric_count = numeric.notna().sum()
+        if numeric_count > 0:
+            # Some values are numeric — non-numeric ones are invalid
+            mask = mask | numeric.isna()
+        else:
+            # ALL values are non-numeric — can't do range check, nothing is "invalid" by range
+            # This prevents false failures on string columns
+            pass
         return mask
